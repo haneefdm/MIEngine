@@ -2,6 +2,7 @@
   "dependencies": {
     "MicroBuild.Core": "0.2.0",
     "Microsoft.VisualStudio.Debugger.Interop.Portable": "1.0.1",
+    "Microsoft.VisualStudio.Shared.VsCodeDebugProtocol": "16.2.30529.1",
     "Newtonsoft.Json": "9.0.1"
   },
   "frameworks": {
