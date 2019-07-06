@@ -43,7 +43,7 @@ namespace OpenDebugAD7
         private Dictionary<string, IDebugPendingBreakpoint2> m_functionBreakpoints;
         private readonly Dictionary<int, ThreadFrameEnumInfo> m_threadFrameEnumInfos = new Dictionary<int, ThreadFrameEnumInfo>();
         private readonly HandleCollection<IDebugStackFrame2> m_frameHandles;
-
+        private readonly HashSet<int> m_regHandles = new HashSet<int>();
         private IDebugProgram2 m_program;
         private readonly Dictionary<int, IDebugThread2> m_threads = new Dictionary<int, IDebugThread2>();
 
@@ -63,6 +63,7 @@ namespace OpenDebugAD7
         private VariableManager m_variableManager;
 
         private static Guid s_guidFilterAllLocalsPlusArgs = new Guid("939729a8-4cb0-4647-9831-7ff465240d5f");
+        private static Guid s_guidFilterRegisters = new Guid("223ae797-bd09-4f28-8241-2763bdc5f713");
 
         #region Constructor
 
@@ -248,6 +249,7 @@ namespace OpenDebugAD7
                 m_variableManager.Reset();
                 m_frameHandles.Reset();
                 m_threadFrameEnumInfos.Clear();
+                m_regHandles.Clear();
             }
         }
 
@@ -256,6 +258,7 @@ namespace OpenDebugAD7
             Debug.Assert(m_variableManager.IsEmpty(), "Why do we have variable handles?");
             Debug.Assert(m_frameHandles.IsEmpty, "Why do we have frame handles?");
             Debug.Assert(m_threadFrameEnumInfos.Count == 0, "Why do we have thread frame enums?");
+            Debug.Assert(m_regHandles.Count == 0, "Why do we have reg scope?");
             m_isStopped = true;
         }
 
@@ -443,22 +446,40 @@ namespace OpenDebugAD7
             m_logger.WriteLine(category, prefixString + text);
         }
 
-        private VariablesResponse VariablesFromFrame(IDebugStackFrame2 frame)
+        private VariablesResponse _cachedRegVariables = null;
+        private VariablesResponse VariablesFromFrame(IDebugStackFrame2 frame, int variableReference)
         {
             VariablesResponse response = new VariablesResponse();
 
             uint n;
             IEnumDebugPropertyInfo2 varEnum;
-            if (frame.EnumProperties(enum_DEBUGPROP_INFO_FLAGS.DEBUGPROP_INFO_PROP, 10, ref s_guidFilterAllLocalsPlusArgs, 0, out n, out varEnum) == HRConstants.S_OK)
+            bool isReg = m_regHandles.Contains(variableReference);
+            Guid guid = isReg ? s_guidFilterRegisters : s_guidFilterAllLocalsPlusArgs;
+            enum_DEBUGPROP_INFO_FLAGS flags = enum_DEBUGPROP_INFO_FLAGS.DEBUGPROP_INFO_PROP;
+            if (isReg) {
+                if (_cachedRegVariables != null)
+                    return _cachedRegVariables;
+                flags |=
+                    enum_DEBUGPROP_INFO_FLAGS.DEBUGPROP_INFO_ATTRIB |
+                    enum_DEBUGPROP_INFO_FLAGS.DEBUGPROP_INFO_NAME |
+                    enum_DEBUGPROP_INFO_FLAGS.DEBUGPROP_INFO_VALUE_AUTOEXPAND;
+            }
+            if (frame.EnumProperties(flags, 10, ref guid, 0, out n, out varEnum) == HRConstants.S_OK)
             {
                 DEBUG_PROPERTY_INFO[] props = new DEBUG_PROPERTY_INFO[1];
                 uint nProps;
                 while (varEnum.Next(1, props, out nProps) == HRConstants.S_OK)
                 {
-                    response.Variables.Add(m_variableManager.CreateVariable(props[0].pProperty, GetDefaultPropertyInfoFlags()));
+                    Variable var = m_variableManager.CreateVariable(props[0].pProperty, GetDefaultPropertyInfoFlags());
+                    if (isReg)
+                    {
+                        m_regHandles.Add(var.VariablesReference);
+                        Debug.WriteLine(String.Format(CultureInfo.InvariantCulture, "Haneef: Variable {0}:{1}, parent {2}",
+                            props[0].bstrName, var.VariablesReference, variableReference));
+                    }
+                    response.Variables.Add(var);
                 }
             }
-
             return response;
         }
 
@@ -1261,6 +1282,27 @@ namespace OpenDebugAD7
             {
                 uint n;
                 IEnumDebugPropertyInfo2 varEnum;
+
+                // Create the register and register groups first so their VariablesReferences will always be the same
+                if (frame.EnumProperties(enum_DEBUGPROP_INFO_FLAGS.DEBUGPROP_INFO_PROP, 10, ref s_guidFilterRegisters, 0, out n, out varEnum) == HRConstants.S_OK)
+                {
+                    if (n > 0)
+                    {
+                        int varRef = m_variableManager.Create(frame);
+                        response.Scopes.Add(new Scope()
+                        {
+                            Name = AD7Resources.Registers_Scope_Name,
+                            VariablesReference = varRef,
+                            PresentationHint = Scope.PresentationHintValue.Registers,
+                            Expensive = true
+                        });
+                        m_regHandles.Add(varRef);
+                        Debug.WriteLine(String.Format(CultureInfo.InvariantCulture,
+                            "Haneef: Scope Register {0}, Frame: {1}", varRef, frameReference));
+                        _cachedRegVariables = null;
+                        _cachedRegVariables = VariablesFromFrame(frame, varRef);
+                    }
+                }
                 if (frame.EnumProperties(enum_DEBUGPROP_INFO_FLAGS.DEBUGPROP_INFO_PROP, 10, ref s_guidFilterAllLocalsPlusArgs, 0, out n, out varEnum) == HRConstants.S_OK)
                 {
                     if (n > 0)
@@ -1273,6 +1315,8 @@ namespace OpenDebugAD7
                         });
                     }
                 }
+                // Reverse so Variables always come first
+                response.Scopes.Reverse();
             }
 
             responder.SetResponse(response);
@@ -1295,7 +1339,7 @@ namespace OpenDebugAD7
             {
                 if (container is IDebugStackFrame2)
                 {
-                    response = VariablesFromFrame(container as IDebugStackFrame2);
+                    response = VariablesFromFrame(container as IDebugStackFrame2, reference);
                 }
                 else
                 {
@@ -1374,6 +1418,7 @@ namespace OpenDebugAD7
                 return;
             }
 
+            bool isReg = m_regHandles.Contains(reference);
             enum_DEBUGPROP_INFO_FLAGS flags = GetDefaultPropertyInfoFlags();
             IDebugProperty2 property = null;
             IEnumDebugPropertyInfo2 varEnum = null;
@@ -1398,10 +1443,17 @@ namespace OpenDebugAD7
                     return;
                 }
 
+                Guid guid = isReg ? s_guidFilterRegisters : s_guidFilterAllLocalsPlusArgs;
+                enum_DEBUGPROP_INFO_FLAGS propFlags = enum_DEBUGPROP_INFO_FLAGS.DEBUGPROP_INFO_PROP;
+                if (isReg)
+                    propFlags |=
+                        enum_DEBUGPROP_INFO_FLAGS.DEBUGPROP_INFO_ATTRIB |
+                        enum_DEBUGPROP_INFO_FLAGS.DEBUGPROP_INFO_NAME |
+                        enum_DEBUGPROP_INFO_FLAGS.DEBUGPROP_INFO_VALUE_AUTOEXPAND;
                 hr = debugProperty.EnumChildren(
-                    enum_DEBUGPROP_INFO_FLAGS.DEBUGPROP_INFO_PROP,
+                    propFlags,
                     Constants.EvaluationRadix,
-                    ref s_guidFilterAllLocalsPlusArgs,
+                    ref guid,
                     enum_DBG_ATTRIB_FLAGS.DBG_ATTRIB_ALL,
                     name,
                     Constants.EvaluationTimeout,
@@ -1415,7 +1467,10 @@ namespace OpenDebugAD7
                 while (varEnum.Next(1, props, out nProps) == HRConstants.S_OK)
                 {
                     DEBUG_PROPERTY_INFO[] propertyInfo = new DEBUG_PROPERTY_INFO[1];
-                    props[0].pProperty.GetPropertyInfo(flags, Constants.EvaluationRadix, Constants.EvaluationTimeout, null, 0, propertyInfo);
+                    if (isReg)      // haneefdm: Is this the right way? We are going to error out anyway
+                        propertyInfo[0] = props[0];
+                    else
+                        props[0].pProperty.GetPropertyInfo(flags, Constants.EvaluationRadix, Constants.EvaluationTimeout, null, 0, propertyInfo);
 
                     if (propertyInfo[0].bstrName == name)
                     {

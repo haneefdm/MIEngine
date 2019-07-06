@@ -45,6 +45,7 @@ namespace Microsoft.MIDebugEngine
         public readonly Natvis.Natvis Natvis;
         private ReadOnlyCollection<RegisterDescription> _registers;
         private ReadOnlyCollection<RegisterGroup> _registerGroups;
+        private Dictionary<int, RegisterDescription> _registersById;
         private readonly EngineTelemetry _engineTelemetry = new EngineTelemetry();
         private bool _needTerminalReset;
         private HashSet<Tuple<string, string>> _fileTimestampWarnings;
@@ -2104,6 +2105,7 @@ namespace Microsoft.MIDebugEngine
                 if (_registers != null)
                     return; // already initialized
 
+                _registersById = new Dictionary<int, RegisterDescription>();
                 EngineUtils.RegisterNameMap nameMap = EngineUtils.RegisterNameMap.Create(names);
                 List<RegisterDescription> desc = new List<RegisterDescription>();
                 var registerGroups = new List<RegisterGroup>();
@@ -2115,10 +2117,27 @@ namespace Microsoft.MIDebugEngine
                     }
                     RegisterGroup grp = GetGroupForRegister(registerGroups, names[i], nameMap);
                     desc.Add(new RegisterDescription(names[i], grp, i));
+                    _registersById.Add(i, desc[desc.Count - 1]);
                 }
                 _registerGroups = registerGroups.AsReadOnly();
                 _registers = desc.AsReadOnly();
             });
+        }
+
+        public RegisterDescription GetRegisterDescById(int id)
+        {
+            // If this is called on the Worker thread it may deadlock
+            Debug.Assert(!_worker.IsPollThread());
+
+            if (_registers == null)
+            {
+                InitializeRegisters();
+            }
+
+            RegisterDescription desc = null;
+            if (!_registersById.TryGetValue(id, out desc))
+                Debug.Fail("bad register id: " + id.ToString(CultureInfo.InvariantCulture));
+            return desc;
         }
 
         public ReadOnlyCollection<RegisterDescription> GetRegisterDescriptions()
@@ -2149,7 +2168,7 @@ namespace Microsoft.MIDebugEngine
 
         public async Task<Tuple<int, string>[]> GetRegisters(int threadId, uint level)
         {
-            TupleValue[] values = await MICommandFactory.DataListRegisterValues(threadId);
+            TupleValue[] values = await MICommandFactory.DataListRegisterValues(threadId, level);
             Tuple<int, string>[] regValues = new Tuple<int, string>[values.Length];
             for (int i = 0; i < values.Length; ++i)
             {

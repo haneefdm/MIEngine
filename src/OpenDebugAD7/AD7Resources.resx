@@ -254,4 +254,8 @@
   <data name="Error_VariableIsReadonly" xml:space="preserve">
     <value>'{0}' cannot be assigned to</value>
   </data>
+  <data name="Registers_Scope_Name" xml:space="preserve">
+    <value>Registers</value>
+    <comment>Name of scope used for processor registers</comment>
+  </data>
 </root>

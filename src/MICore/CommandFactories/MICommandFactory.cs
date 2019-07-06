@@ -287,10 +287,10 @@ namespace MICore
             return results.Find<ValueListValue>("register-names").AsStrings;
         }
 
-        public async Task<TupleValue[]> DataListRegisterValues(int threadId)
+        public async Task<TupleValue[]> DataListRegisterValues(int threadId, uint frame)
         {
             string command = "-data-list-register-values x";
-            Results results = await ThreadCmdAsync(command, ResultClass.done, threadId);
+            Results results = await ThreadFrameCmdAsync(command, ResultClass.done, threadId, frame);
             return results.Find<ValueListValue>("register-values").AsArray<TupleValue>();
         }
 

@@ -33,6 +33,7 @@ namespace Microsoft.MIDebugEngine
         // An array of this frame's locals
         private readonly List<VariableInformation> _locals = new List<VariableInformation>();
 
+        private Tuple<int, string>[] _registerValues = null;
 
         public AD7StackFrame(AD7Engine engine, AD7Thread thread, ThreadContext threadContext)
         {
@@ -356,16 +357,22 @@ namespace Microsoft.MIDebugEngine
 
             elementsReturned = (uint)registerGroups.Count;
             DEBUG_PROPERTY_INFO[] propInfo = new DEBUG_PROPERTY_INFO[elementsReturned];
-            Tuple<int, string>[] values = null;
-            Engine.DebuggedProcess.WorkerThread.RunOperation(async () =>
+            if (_registerValues == null)
             {
-                values = await Engine.DebuggedProcess.GetRegisters(Thread.GetDebuggedThread().Id, ThreadContext.Level);
-            });
+                // Tuple<int, string>[] values = null;
+                Engine.DebuggedProcess.WorkerThread.RunOperation(async () =>
+                {
+                    _registerValues = await Engine.DebuggedProcess.GetRegisters(Thread.GetDebuggedThread().Id, ThreadContext.Level);
+                    Debug.WriteLine(String.Format(CultureInfo.InvariantCulture, "Haneef: Getting Registers Thread:{0}, Frame{1}",
+                        Thread.GetDebuggedThread().Id, ThreadContext.Level));
+                });
+            }
             int i = 0;
             foreach (var grp in registerGroups)
             {
-                AD7RegGroupProperty regProp = new AD7RegGroupProperty(Engine, dwFields, grp, values);
+                AD7RegGroupProperty regProp = new AD7RegGroupProperty(Engine, dwFields, grp, _registerValues);
                 propInfo[i] = regProp.PropertyInfo;
+                Debug.WriteLine(String.Format(CultureInfo.InvariantCulture, "Haneef: Group {0}:{1}", i, grp.Name));
                 i++;
             }
             enumObject = new AD7PropertyInfoEnum(propInfo);

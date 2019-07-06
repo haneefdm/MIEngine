@@ -3,7 +3,7 @@
 
 using System;
 using System.Collections.Generic;
-using System.Text;
+using System.Text.RegularExpressions;
 using Microsoft.VisualStudio.Debugger.Interop;
 using System.Diagnostics;
 using System.Globalization;
@@ -131,17 +131,31 @@ namespace Microsoft.MIDebugEngine
 
             private static readonly Entry[] s_arm32Registers = new Entry[]
             {
-                new Entry( "sp", false, "CPU"),
+                new Entry( ".?sp", true, "CPU"),
                 new Entry( "lr", false, "CPU"),
                 new Entry( "pc", false, "CPU"),
-                new Entry( "cpsr", false, "CPU"),
+                new Entry( "[^f]psr", true, "CPU"),
+                new Entry( "primask", false, "CPU"),
+                new Entry( "basepri", false, "CPU"),
+                new Entry( "faultmask", false, "CPU"),
+                new Entry( "control", false, "CPU"),
                 new Entry( "r[0-9]+", true, "CPU"),
                 new Entry( "fpscr", false, "FPU"),
+                new Entry( "fpcr", false, "FPU"),
+                new Entry( "fpsr", false, "FPU"),
                 new Entry( "f[0-9]+", true, "FPU"),
                 new Entry( "s[0-9]+", true, "IEEE Single"),
                 new Entry( "d[0-9]+", true, "IEEE Double"),
                 new Entry( "q[0-9]+", true, "Vector"),
             };
+
+            private static readonly Entry[] s_arm64Registers = new Entry[]
+            {
+                new Entry( "x[0-9]+", true, "CPU"),
+                new Entry( "w[0-9]+", true, "CPU"),
+                new Entry( "v[0-9]+", true, "Vector"),
+                /* probably many more */
+            }.Concat(s_arm32Registers).ToArray();
 
             private static readonly Entry[] s_X86Registers = new Entry[]
             {
@@ -161,7 +175,7 @@ namespace Microsoft.MIDebugEngine
                 new Entry( "es", false, "CPU" ),
                 new Entry( "fs", false, "CPU" ),
                 new Entry( "gs", false, "CPU" ),
-                new Entry( "st", true, "CPU" ),
+                new Entry( "st[0-7]", true, "FPU" ),
                 new Entry( "fctrl", false, "CPU" ),
                 new Entry( "fstat", false, "CPU" ),
                 new Entry( "ftag", false, "CPU" ),
@@ -192,10 +206,30 @@ namespace Microsoft.MIDebugEngine
                 new Entry( "xmm[0-7]il", true, "SSE2" ),
                 new Entry( "xmm[0-7]dh", true, "SSE2" ),
                 new Entry( "xmm[0-7]dl", true, "SSE2" ),
-                new Entry( "xmm[0-7][0-7]", true, "SSE" ),
+                new Entry( "xmm[0-9]", true, "SSE" ),
+                new Entry( "xmm1[0-5]", true, "SSE" ),
                 new Entry( "ymm.+", true, "AVX" ),
                 new Entry( "mm[0-7][0-7]", true, "AMD3DNow" ),
             };
+
+            private static readonly Entry[] s_X64Registers = new Entry[]
+            {
+                new Entry( "rax", false, "CPU" ),
+                new Entry( "rbx", false, "CPU" ),
+                new Entry( "rcx", false, "CPU" ),
+                new Entry( "rdx", false, "CPU" ),
+                new Entry( "rsi", false, "CPU" ),
+                new Entry( "rdi", false, "CPU" ),
+                new Entry( "rbx", false, "CPU" ),
+                new Entry( "rbp", false, "CPU" ),
+                new Entry( "rsp", false, "CPU" ),
+                new Entry( "r[89]", true, "CPU" ),
+                new Entry( "r1[0-5]", true, "CPU" ),
+                new Entry( "rip", false, "CPU" ),
+                new Entry( "rflags", false, "CPU" ),
+                new Entry( "[sd]il", true, "CPU" ),
+                new Entry( "[bs]pl", true, "CPU" ),
+            }.Concat(s_X86Registers).ToArray();
 
             private static readonly Entry[] s_allRegisters = new Entry[]
             {
@@ -206,11 +240,19 @@ namespace Microsoft.MIDebugEngine
             {
                 // TODO: more robust mechanism for determining processor architecture
                 RegisterNameMap map = new RegisterNameMap();
-                if (registerNames[0][0] == 'r') // registers are prefixed with 'r', assume ARM and initialize its register sets
+                if (Array.IndexOf(registerNames, "x16") >= 0) // Typical of ARM-64 architectures
+                {
+                    map._map = s_arm64Registers;
+                }
+                else if (Array.IndexOf(registerNames, "lr") >= 0) // Typical of ARM 32 architectures. Arm 64 also has 'lr'
                 {
                     map._map = s_arm32Registers;
                 }
-                else if (registerNames[0][0] == 'e') // x86 register set
+                else if (Array.IndexOf(registerNames, "rax") >= 0) // x86/x64 register set
+                {
+                    map._map = s_X64Registers;
+                }
+                else if (Array.IndexOf(registerNames, "eax") >= 0) // x86 register set
                 {
                     map._map = s_X86Registers;
                 }
@@ -224,11 +266,12 @@ namespace Microsoft.MIDebugEngine
 
             public string GetGroupName(string regName)
             {
+                regName = regName.ToLower(CultureInfo.InvariantCulture);
                 foreach (var e in _map)
                 {
                     if (e.IsRegex)
                     {
-                        if (System.Text.RegularExpressions.Regex.IsMatch(regName, e.Name))
+                        if (System.Text.RegularExpressions.Regex.IsMatch(regName, e.Name, RegexOptions.IgnoreCase))
                         {
                             return e.Group;
                         }
