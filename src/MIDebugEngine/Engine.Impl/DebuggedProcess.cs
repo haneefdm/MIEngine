@@ -1087,6 +1087,7 @@ namespace Microsoft.MIDebugEngine
                 }
             }
 
+            await this.EnsureModulesLoaded();
             await ThreadCache.StackFrames(thread);  // prepopulate the break thread in the thread cache
             ThreadContext cxt = await ThreadCache.GetThreadContext(thread);
 
@@ -2266,6 +2267,8 @@ namespace Microsoft.MIDebugEngine
         {
             return ConsoleCmdAsync(@"shell echo -e \\033c 1>&2");
         }
+
+        public bool IsChildProcessDebugging => _childProcessHandler != null;
 
         public bool MapCurrentSrcToCompileTimeSrc(string currentSrc, out string compilerSrc)
         {
