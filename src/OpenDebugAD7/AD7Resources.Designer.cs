@@ -10,7 +10,6 @@
 
 namespace OpenDebugAD7 {
     using System;
-    using System.Reflection;
     
     
     /// <summary>
@@ -20,7 +19,7 @@ namespace OpenDebugAD7 {
     // class via a tool like ResGen or Visual Studio.
     // To add or remove a member, edit your .ResX file then rerun ResGen
     // with the /str option, or rebuild your VS project.
-    [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Resources.Tools.StronglyTypedResourceBuilder", "4.0.0.0")]
+    [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Resources.Tools.StronglyTypedResourceBuilder", "15.0.0.0")]
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
     [global::System.Runtime.CompilerServices.CompilerGeneratedAttribute()]
     internal class AD7Resources {
@@ -40,7 +39,7 @@ namespace OpenDebugAD7 {
         internal static global::System.Resources.ResourceManager ResourceManager {
             get {
                 if (object.ReferenceEquals(resourceMan, null)) {
-                    global::System.Resources.ResourceManager temp = new global::System.Resources.ResourceManager("OpenDebugAD7.AD7Resources", typeof(AD7Resources).GetTypeInfo().Assembly);
+                    global::System.Resources.ResourceManager temp = new global::System.Resources.ResourceManager("OpenDebugAD7.AD7Resources", typeof(AD7Resources).Assembly);
                     resourceMan = temp;
                 }
                 return resourceMan;
@@ -405,6 +404,15 @@ namespace OpenDebugAD7 {
         internal static string ProcessExitMessage {
             get {
                 return ResourceManager.GetString("ProcessExitMessage", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Registers.
+        /// </summary>
+        internal static string Registers_Scope_Name {
+            get {
+                return ResourceManager.GetString("Registers_Scope_Name", resourceCulture);
             }
         }
         

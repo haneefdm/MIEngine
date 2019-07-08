@@ -28,7 +28,7 @@ namespace OpenDebug
             List<LoggingCategory> loggingCategories = new List<LoggingCategory>();
 
             // parse command line arguments
-            var myArgs = new string[] { "--pauseForDebugger" };
+            var myArgs = new string[] { /* "--pauseForDebugger" */ };
             foreach (var a in argv.Concat(myArgs))
             {
                 if ((a == null) || (a == "undefined"))
